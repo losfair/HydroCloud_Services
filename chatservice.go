@@ -6,12 +6,14 @@ import "net/url"
 import "database/sql"
 import "strings"
 import "io/ioutil"
+import "strconv"
 
 import _ "github.com/go-sql-driver/mysql"
 
 import "turingbot"
 
 var tplGetGroupIntroByName *sql.Stmt
+var tplGetAllGroupNames *sql.Stmt
 
 func getGroupIntro(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path,"/")
@@ -46,6 +48,22 @@ func getGroupIntro(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write([]byte(content))
+}
+
+func getAllGroupNames(w http.ResponseWriter, r *http.Request) {
+	res,err := tplGetAllGroupNames.Query()
+	if err!=nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	var currentName string
+	currentID := 1
+	for res.Next() {
+		res.Scan(&currentName)
+		w.Write([]byte("["+strconv.Itoa(currentID) + "] "+currentName+"\n"))
+		currentID++
+	}
+	w.Write([]byte("查看社团详情，请回复：HCBot 安利 [社团名]\n未找到你的社团？请在 https://apps.ixservices.net/anli/ 提交。"))
 }
 
 func turingBot(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +106,13 @@ func main() {
 		panic(err)
 	}
 
+	tplGetAllGroupNames,err = db.Prepare("SELECT name FROM intro_to_ntzx_groups_2016 WHERE is_showed=1 ORDER BY id ASC")
+	if err!=nil {
+		panic(err)
+	}
+
 	http.HandleFunc("/getGroupIntro/",getGroupIntro)
+	http.HandleFunc("/getAllGroupNames",getAllGroupNames)
 	http.HandleFunc("/turingBot/",turingBot)
 
 	fmt.Println("Listening on",listenAddr)
