@@ -6,15 +6,21 @@ import "os"
 import "os/exec"
 import "net/http"
 import "strings"
-//import "io/ioutil"
+import "io/ioutil"
 //import "strconv"
 import "encoding/base64"
 //import "encoding/hex"
 //import "crypto/md5"
 import "time"
 //import "math/rand"
-
+import "errors"
+import "net/url"
 import "tzacmcheck"
+
+import "github.com/losfair/bdtts-go/bdtts"
+import "github.com/losfair/bdoauth-go/bdoauth"
+
+var bdToken string
 
 var logBuf string
 
@@ -111,10 +117,81 @@ func showLog(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(logBuf))
 }
 
+func onTTSRequest(w http.ResponseWriter, r *http.Request) {
+	if bdToken=="" {
+		w.Write([]byte("bdToken not initialized."))
+		return
+	}
+	parts := strings.Split(r.URL.Path,"/")
+	if len(parts) != 3 {
+		w.Write([]byte("Bad request"))
+		return
+	}
+	args,err := url.ParseQuery(parts[2])
+	if err!=nil {
+		w.Write([]byte("Bad request"))
+		return
+	}
+
+	t,ok := args["text"]
+	if !ok {
+		w.Write([]byte("Bad request"))
+		return
+	}
+
+	text := t[0]
+
+	result,err := bdtts.Request(bdToken,text)
+	if err!=nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	w.Header().Set("Content-Type","audio/mp3")
+	w.Write(result)
+}
+
+func initBDOAuth(id,secret string) (string,error) {
+	ret := bdoauth.RequestClientCredentials(id,secret)
+	if ret==nil {
+		return "",errors.New("bdoauth request failed")
+	}
+	tk,ok := ret["access_token"]
+	if !ok {
+		return "",errors.New("Unable to get access token")
+	}
+	return tk.(string),nil
+}
+
 func main() {
 	logBuf = ""
 
 	os.Setenv("QT_QPA_PLATFORM","offscreen")
+
+	var err error
+
+	bdToken = ""
+
+	var bdAPIKeyParts []string
+
+	bdAPIKey,err := ioutil.ReadFile("bdAPIKey.txt")
+	if err!=nil {
+		log.Println("WARNING: No bdAPIKey.txt. Skipping Baidu OAuth initialization.")
+		goto startListen
+	}
+
+	bdAPIKeyParts = strings.Split(string(bdAPIKey),":")
+	if len(bdAPIKeyParts)!=2 {
+		log.Println("Bad format for bdAPIKey.txt, please check. Skipping Baidu OAuth initialization.")
+		goto startListen
+	}
+
+	bdToken,err = initBDOAuth(strings.TrimSpace(bdAPIKeyParts[0]),strings.TrimSpace(bdAPIKeyParts[1]))
+	if err!=nil {
+		log.Println("WARNING: Unable to init Baidu OAuth:",err.Error())
+	}
+
+	startListen:
 
 	listenAddr := ":6084"
 	fmt.Println("Listening on",listenAddr)
@@ -123,6 +200,7 @@ func main() {
 	http.HandleFunc("/wxCollect/",onWXCollectRequest)
 	http.HandleFunc("/logFromPC/",logFromPC)
 	http.HandleFunc("/showLog/",showLog)
+	http.HandleFunc("/ttsRequest/",onTTSRequest)
 
 	http.ListenAndServe(listenAddr,nil)
 }
