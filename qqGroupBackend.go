@@ -2,18 +2,28 @@ package main
 
 import "log"
 import "time"
+import "strings"
 import "strconv"
 import "net/http"
 import "io/ioutil"
 import "database/sql"
 import "encoding/json"
+import "math/rand"
+
+//import "zhuji"
 import _ "github.com/go-sql-driver/mysql"
+
+// #cgo LDFLAGS: -L. -lLetsChat
+// #include "c/letsChat/detect.h"
+import "C"
 
 var sqlConn *sql.DB
 
 var stmtQueryGroupSign *sql.Stmt
 var stmtInsertGroupSign *sql.Stmt
 
+var zhujiMsgChannels map[int64]chan string
+var zhujiOutputChannels map[int64]chan string
 
 func checkError(err error) {
 	if err!=nil {
@@ -34,6 +44,11 @@ func initDatabase() *sql.DB {
 	return db
 }
 
+func initGlobalMaps() {
+	zhujiMsgChannels = make(map[int64]chan string)
+	zhujiOutputChannels = make(map[int64]chan string)
+}
+
 func prepareStmt() {
 	var err error
 
@@ -43,6 +58,31 @@ func prepareStmt() {
 	stmtInsertGroupSign,err = sqlConn.Prepare("INSERT INTO group_sign (gid,uid,sign_time) VALUES(?,?,?)")
 	checkError(err)
 }
+
+/*
+func handleZhuji(gid int64, req string) string {
+	needStart := false
+	msgChan,ok := zhujiMsgChannels[gid]
+	if !ok {
+		zhujiMsgChannels[gid]=make(chan string)
+		msgChan = zhujiMsgChannels[gid]
+		needStart=true
+	}
+	outChan,ok := zhujiOutputChannels[gid]
+	if !ok {
+		zhujiOutputChannels[gid] = make(chan string)
+		outChan = zhujiOutputChannels[gid]
+		needStart=true
+	}
+	log.Println("New Zhuji request from group",gid,"-",req)
+	if needStart {
+		log.Println("Starting goroutine for group",gid)
+		go zhuji.Start(msgChan,outChan)
+	}
+	msgChan <- req+"\n"
+	return <-outChan
+}
+*/
 
 func doGroupSign(ginfo,uinfo map[string]interface{}) string {
 	timeData := time.Now()
@@ -74,6 +114,10 @@ func doGroupSign(ginfo,uinfo map[string]interface{}) string {
 	return "签到成功，签到数据行 ID: "+strconv.FormatInt(lastInsert,10)
 }
 
+func generateTouZi() string {
+	return strconv.Itoa(rand.Intn(5)+1)
+}
+
 func onNewMessage(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	requestBody,err := ioutil.ReadAll(r.Body)
@@ -103,19 +147,57 @@ func onNewMessage(w http.ResponseWriter, r *http.Request) {
 			return
 	}
 
+	userMessage = strings.TrimSpace(userMessage)
+
+	log.Println("GID",int64(requestData["ginfo"].(map[string]interface{})["account"].(float64)),"-",userMessage)
+
 	apiReturnString := ""
+
+/*	if len(userMessage)>2 && userMessage[0:1]=="." {
+		apiReturnString = handleZhuji(int64(requestData["ginfo"].(map[string]interface{})["account"].(float64)),userMessage[1:len(userMessage)])
+		goto writeOut
+	}
+*/
+
+	groupId := int64(requestData["ginfo"].(map[string]interface{})["account"].(float64))
+
+	C.chatMsgInput(C.CString(userMessage),C.id_type(groupId))
+
+/*	if C.chatGetTotalWeight(C.id_type(groupId))>=1.0 {
+		C.chatClearTotalWeight(C.id_type(groupId))
+		w.Write([]byte("这群风气不太对啊。"))
+		return
+	}
+*/
+
+	letsChatReturn := C.GoString(C.chatGetOutputText(C.id_type(groupId)))
+	if letsChatReturn != "OK" {
+		w.Write([]byte(letsChatReturn))
+		return
+	}
 
 	switch userMessage {
 		case "签到":
 			apiReturnString = doGroupSign(requestData["ginfo"].(map[string]interface{}),requestData["uinfo"].(map[string]interface{}))
+		case "抛骰子":
+			apiReturnString = generateTouZi()
+		case "+1s":
+			apiReturnString = "已禁用。"
+		case "续一秒":
+			apiReturnString = "已禁用。"
 		default:
-			apiReturnString = "Unsupported userMessage"
+			apiReturnString = "UNSUPPORTED"
 	}
+
+//	writeOut:
+
 	w.Write([]byte(apiReturnString))
 }
 
 func main() {
 	sqlConn = initDatabase()
+
+	initGlobalMaps()
 
 	prepareStmt()
 
