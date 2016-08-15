@@ -10,14 +10,14 @@ struct GroupWords {
 	id_type id;
 	float totalWeight;
 	time_t lastUpdateTime;
-	char *lastMessage;
+	unsigned long lastMessageHash;
 	unsigned int msgRepeatCount;
 	struct GroupWords *next;
 };
 
 static const int GROUPWORDS_TIMEOUT_SECS = 300;
 static const float WEIGHT_TO_OUTPUT = 1.0;
-static const unsigned int REPEAT_COUNT_LEVELS[] = {3,5,10};
+static const unsigned int REPEAT_COUNT_LEVELS[] = {5,10};
 
 static struct GroupWords *listStart = NULL;
 
@@ -31,11 +31,21 @@ static int getCount (const char *str, const char *p) {
 	return c;
 }
 
+// 32 or 64 bits for long. It just works.
+static unsigned long badHash (const unsigned char *str) {
+	int c;
+	unsigned long hash = 5381;
+
+	while (c = *str++) hash = ((hash << 5) + hash) + c;
+
+	return hash;
+}
+
 static inline void initGroupWordsNode (struct GroupWords *n, id_type id) {
 	n -> id = id;
 	n -> totalWeight = 0.0;
 	n -> lastUpdateTime = time(0);
-	n -> lastMessage = NULL;
+	n -> lastMessageHash = 0;
 	n -> msgRepeatCount = 0;
 	n -> next = NULL;
 }
@@ -87,14 +97,13 @@ static inline void updateTotalWeight (struct GroupWords *n, const char *msg) {
 
 static void updateLastMessage (struct GroupWords *n, const char *msg) {
 	size_t len = strlen(msg);
+	unsigned long msgHash = badHash(msg);
 
-	if(n -> lastMessage != NULL && strcmp(n -> lastMessage, msg) == 0) {
+	if(n -> lastMessageHash != 0 && n -> lastMessageHash == msgHash) {
 		n -> msgRepeatCount++;
 	} else {
-		n -> msgRepeatCount=0;
-		if(n -> lastMessage != NULL) free(n -> lastMessage);
-		n -> lastMessage = malloc(len + 1);
-		memcpy(n -> lastMessage, msg, len + 1);
+		n -> msgRepeatCount = 0;
+		n -> lastMessageHash = msgHash;
 	}
 }
 
@@ -135,10 +144,8 @@ const char * chatGetOutputText (id_type id) {
 		n -> totalWeight = 0.0;
 		return "这群风气不太对啊。";
 	} else if(n -> msgRepeatCount == REPEAT_COUNT_LEVELS[0]) {
-		return n -> lastMessage;
-	} else if(n -> msgRepeatCount == REPEAT_COUNT_LEVELS[1]) {
 		return "破队形。";
-	} else if(n -> msgRepeatCount == REPEAT_COUNT_LEVELS[2]) {
+	} else if(n -> msgRepeatCount == REPEAT_COUNT_LEVELS[1]) {
 		return "刷屏。不太好吧。";
 	} else {
 		return "OK";
