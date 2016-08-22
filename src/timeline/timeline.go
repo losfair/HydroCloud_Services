@@ -20,7 +20,7 @@ import "image/png"
 import "image/jpeg"
 import "bytes"
 
-import "scsapi"
+import "github.com/losfair/scsapi-go/scsapi"
 
 var urlPrefix string
 

@@ -22,10 +22,10 @@ import _ "github.com/go-sql-driver/mysql"
 import "github.com/losfair/bdoauth-go/bdoauth"
 import "github.com/losfair/bdtts-go/bdtts"
 import "github.com/losfair/bdsr-go/bdsr"
+import "github.com/losfair/scsapi-go/scsapi"
 
 import "tzacmcheck"
 import "timeline"
-import "scsapi"
 
 var bdToken string
 
