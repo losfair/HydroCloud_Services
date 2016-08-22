@@ -1,0 +1,30 @@
+<html>
+<head>
+<title>通中 2016 级新生军训</title>
+<meta name="ViewPort" content="initial-scale=1, minimum-scale=1, width=device-width"/>
+<meta name="HandheldFriendly" content="true" />
+<meta name="renderer" content="webkit" />
+
+<link rel="stylesheet" type="text/css" href="style.css" />
+<link rel="stylesheet" type="text/css" href="animations.css" />
+
+<script language="javascript" src="jquery-1.12.4.min.js"></script>
+<script language="javascript" src="render.min.js"></script>
+
+</head>
+<body>
+<div id="topbar" ondblclick="toggleDebug()"><div id="topbar-title">通中 2016 级新生军训</div></div>
+<div id="reload-button" onclick="deltaScroll=1;loadContent()"></div>
+<div id="confirm-button"></div>
+<div id="post-button" style="display:none"></div>
+<div id="container" style="display:none"></div>
+<div id="cover" style="display:none"></div>
+<div id="image-container" style="display:none"></div>
+<pre id="debug-container" style="display:none;padding-top:150px">
+<button onclick="showPost()">showPost</button>
+</pre>
+<div id="loading-container">
+<div class="loading"><svg class="circular" viewBox="25 25 50 50"><circle class="path" cx="50" cy="50" r="20" fill="none" stroke-width="2" stroke-miterlimit="10"/></svg></div>
+</div>
+</body>
+</html>

@@ -12,13 +12,20 @@ import "encoding/base64"
 //import "encoding/hex"
 //import "crypto/md5"
 import "time"
-//import "math/rand"
+import "math/rand"
 import "errors"
 import "net/url"
-import "tzacmcheck"
+import "database/sql"
 
-import "github.com/losfair/bdtts-go/bdtts"
+import _ "github.com/go-sql-driver/mysql"
+
 import "github.com/losfair/bdoauth-go/bdoauth"
+import "github.com/losfair/bdtts-go/bdtts"
+import "github.com/losfair/bdsr-go/bdsr"
+
+import "tzacmcheck"
+import "timeline"
+import "scsapi"
 
 var bdToken string
 
@@ -151,6 +158,48 @@ func onTTSRequest(w http.ResponseWriter, r *http.Request) {
 	w.Write(result)
 }
 
+func onAudioChannel(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path,"/")
+	if len(parts)<3 {
+		w.Write([]byte("Bad request"))
+		return
+	}
+	action := parts[2]
+
+	switch action {
+		case "sr":
+			defer r.Body.Close()
+			reqData,err := ioutil.ReadAll(r.Body)
+			if err!=nil {
+				w.Write([]byte("Unable to read request data: "+err.Error()))
+				return
+			}
+			text,err := bdsr.Request(bdToken,reqData)
+			if err!=nil {
+				w.Write([]byte(err.Error()))
+				return
+			}
+			w.Write([]byte(text))
+		default:
+			w.Write([]byte("Not supported"))
+	}
+}
+
+func prepareSCS() {
+	confData,err := ioutil.ReadFile("scscfg.txt")
+	if err!=nil {
+		log.Fatal("SCS initialization failed")
+	}
+	conf := strings.TrimSpace(string(confData))
+	parts := strings.Split(conf,":")
+	if len(parts)!=3 {
+		log.Fatal("Bad SCS configuration")
+	}
+	scsapi.SetAccessKey(parts[0])
+	scsapi.SetSecretKey(parts[1])
+	scsapi.SetBucketName(parts[2])
+}
+
 func initBDOAuth(id,secret string) (string,error) {
 	ret := bdoauth.RequestClientCredentials(id,secret)
 	if ret==nil {
@@ -164,11 +213,32 @@ func initBDOAuth(id,secret string) (string,error) {
 }
 
 func main() {
-	logBuf = ""
+//	logBuf = ""
 
 	os.Setenv("QT_QPA_PLATFORM","offscreen")
 
-	var err error
+	rand.Seed(time.Now().UnixNano())
+
+	sqlConnString,err := ioutil.ReadFile("sqlConnString.txt")
+	if err!=nil {
+		panic(err)
+	}
+	db,err := sql.Open("mysql",string(sqlConnString))
+	if err!=nil {
+		panic(err)
+	}
+
+	err = db.Ping()
+	if err!=nil {
+		panic(err)
+	}
+
+	db.SetMaxOpenConns(16)
+	db.SetConnMaxLifetime(10*time.Second)
+
+	prepareSCS()
+
+	timeline.Prepare("timeline_static.json.gz",db)
 
 	bdToken = ""
 
@@ -198,9 +268,11 @@ func main() {
 
 	http.HandleFunc("/tzACMCheck/",onTZACMCheckRequest)
 	http.HandleFunc("/wxCollect/",onWXCollectRequest)
-	http.HandleFunc("/logFromPC/",logFromPC)
-	http.HandleFunc("/showLog/",showLog)
+//	http.HandleFunc("/logFromPC/",logFromPC)
+//	http.HandleFunc("/showLog/",showLog)
 	http.HandleFunc("/ttsRequest/",onTTSRequest)
+	http.HandleFunc("/audioChannel/",onAudioChannel)
+	http.HandleFunc("/timeline/",timeline.OnRequest)
 
 	http.ListenAndServe(listenAddr,nil)
 }

@@ -1,0 +1,26 @@
+<html>
+<head>
+<script>
+function getQueryString(name) { 
+	var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i");
+	var r = window.location.search.substr(1).match(reg);
+	if (r != null) return unescape(r[2]);
+	return null;
+}
+function getImageURL(token) {
+	var xhr = new XMLHttpRequest;
+	xhr.open("POST","/timeline/ajax/requestImageToken/get",false);
+	xhr.send(token);
+	return xhr.responseText;
+}
+function init() {
+	var imgToken = getQueryString("img");
+	if(imgToken == null) return;
+	document.getElementById("target").src = getImageURL(imgToken);
+}
+</script>
+<body onload="init()">
+<img id="target" style="width:100%" />
+</body>
+</html>
+
